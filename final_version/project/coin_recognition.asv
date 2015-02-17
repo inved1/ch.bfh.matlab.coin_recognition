@@ -1,0 +1,286 @@
+% Matlab Project by Julien Villiger (villj2@bfh.ch) and Daniel Inversini
+% (inved1@bfh.ch)
+% 
+% Target: Recognize coins (swiss francs) from a picture and count the money
+% How: search with Hough
+% Secondly: Pattern matching
+%
+
+% Steps:
+% 1. Get Settings
+% 2. Read Image and create Grayscale Image 
+% 3. Create Histogram
+% 4. Create Binary File
+% 5. Holes Filling
+% 6. Closing
+% 7. Diameter
+% 8. Edge detection
+% 9. Hough Transformation
+% 10. 
+
+clc; clear; clear all; clear workspace;
+
+
+tic % T T T TIMER
+
+% 1.
+% --- get Settings (csv, first column is Amount (CHF), second is diameter --- %
+mySettings = coin_recognition_settings();
+% this is the 0.01 CHF coin, reference coin
+MassReference = 16;
+
+
+% 2. 
+% Read Image and create Grayscale Image %
+X = imread('img_coins.jpg');
+XPattern = X; %save
+I = im2double(X);
+IGray = rgb2gray(I);
+
+%figure; imshow(I); title('Original');
+%figure; imshow(IGray); title('Graustufenbild');
+
+% 3.
+% Create Histogram %
+Hist = imhist(IGray);
+
+%figure; imhist(IGray); title('Histogramm Graustufenbild');
+
+
+
+% 4. 
+% Create binary File %
+IBinary = im2double(im2bw(I, 0.15));
+IBinaryAllCoins = im2double(im2bw(I, 0.9));
+
+%figure; imshow(IBinaryAllCoins); title('Binaeres Bild');
+
+% 5. 
+% Holes Filling %
+IBinary = imcomplement(IBinary);
+IBinary = imfill(IBinary,'holes');
+IBinary = imcomplement(IBinary);
+
+IBinaryAllCoins = imcomplement(IBinaryAllCoins);
+IBinaryAllCoins = imfill(IBinaryAllCoins,'holes');
+IBinaryAllCoins = imcomplement(IBinaryAllCoins);
+
+
+%figure; imshow(IBinaryAllCoins); title('Holes Filling');
+
+% 6. 
+% Closing %
+se = strel('disk',3);
+IBinary = imclose(IBinary, se);
+IBinaryAllCoins = imclose(IBinaryAllCoins, se);
+
+%figure; imshow(IBinaryAllCoins); title('Closing');
+IMGpattern = IBinaryAllCoins; % save for later
+
+
+% 7.
+% Get Diameter
+% Count white Pixels %
+PixelsWhite = sum(IBinary(:)==0);
+Diameter = 2 * sqrt(PixelsWhite / pi);
+
+
+% 8.
+% Edge Detection %
+IEdge = edge(IBinary,'canny');
+IEdgeAllCoins = edge(IBinaryAllCoins, 'canny');
+
+%figure; imshow(IEdge); title('Kantendetektion');
+%figure; imshow(IBinaryAllCoins); title('Binaeres Bild aller Muenzen');
+%figure; imshow(IEdgeAllCoins); title('Kantendetektion alle Muenzen');
+
+% Calculate Searched Diameters
+SearchedDiameters = {
+    getPercentage(MassReference, mySettings(8)) * Diameter
+    getPercentage(MassReference, mySettings(9)) * Diameter
+    getPercentage(MassReference, mySettings(10)) * Diameter
+    getPercentage(MassReference, mySettings(11)) * Diameter
+    getPercentage(MassReference, mySettings(12)) * Diameter
+    getPercentage(MassReference, mySettings(13)) * Diameter
+    getPercentage(MassReference, mySettings(14)) * Diameter
+};
+
+
+% 9.
+% Hough Transformation
+% Now search Coins with class HoughCircle
+money = 0;
+for d = 1:length(SearchedDiameters)
+    
+    SearchedRadius = SearchedDiameters{d} / 2;
+    
+    foundPositionsX = [];
+    
+    for x = -2:2
+        [y0detect,x0detect,Accumulator] = HoughCircle2(IEdgeAllCoins, int32(SearchedRadius) + x, (SearchedRadius + x) * pi);
+        
+        % Transpose Matrix to avoid errors in groupResults
+        x0detect = x0detect';
+        
+        x0detectGrouped = groupResults(x0detect, 10);
+        
+        % TODO group array and check if previous value was similiar
+        
+        % 2 Fehlerquellen:
+        % 
+        % 1) Ein detect-array kann so aussehen: [412, 413, 415, 912] ->
+        % zusammenfassen! also [413, 912]
+        % -> BEHOBEN :D
+        %
+        % 2) bei einem neuen x kann dieselbe m?nze wieder erkannt werden.
+        % darum ?hnliche resultate vergessen bei weiteren loops!
+        % -> Also ein Array f?hren mit gefunden xDetect-Werten.
+        % -> Falls bei einem weiteren Loop ein ?hnlicher Wert vorkommt,
+        % also dieselbe M?nze nochmals gefunden wird, einfach vergessen!
+        % -> BEHOBEN :D
+        
+        
+        
+        %average = x0detect;
+        
+        x0detectGroupedFinal = [];
+        
+        % Loop through all Groups
+        for v = 1:size(x0detectGrouped',1)
+            
+            arr = x0detectGrouped{v};
+            similiarCumulated = 0;
+            
+            % Loop through all Arrays in Groups
+            for v1 = 1:size(arr',1)
+                similiarCumulated = similiarCumulated + arr(v1);
+            end
+            
+            average = similiarCumulated / size(arr',1);
+            
+            if(checkExisting(foundPositionsX, average, 5))
+            else
+                x0detectGroupedFinal = [x0detectGroupedFinal, average];
+            end
+        end
+        
+        
+        
+        % todo: check if current average is already (or nearly) in foundPositionsX
+        % true: dont add average and skip this loop
+        % false: add average and add money
+        
+        % ismember([15 17],X)
+        
+%         if(checkExisting(foundPositionsX, average, 5))
+%            continue; 
+%         end
+        
+        %for e = 1:size(x0detectGrouped',1)
+        for e = 1:size(x0detectGroupedFinal',1)    
+            
+            %if(x0detectGrouped{e})
+            %    if(x0detectGrouped{e})
+            
+            if(x0detectGroupedFinal(e))
+                if(x0detectGroupedFinal(e))
+                
+                    % coin found!
+                    % now count money
+
+                    %coinAmount = size(x0detect,1)
+                    %money = money + coinAmount * CoinValues{d};
+                    
+                    money = money + mySettings(d:d);
+                    
+                    % Add Found Value (average) to Array
+                    foundPositionsX = [foundPositionsX, x0detectGroupedFinal(e)];
+                end
+            end
+        end
+        
+        % Add Found Value (average) to Array
+        % foundPositionsX = [foundPositionsX, average];
+    end
+end
+
+disp('Final Money: CHF ')
+disp(money)
+toc
+
+money = 0;
+
+disp('Pattern Matchin Start')
+tic
+%
+% 1. get all patterns
+%
+fnames = dir('ref_coins/*.jpg');  
+for i = 1 : length(fnames)
+    filename = strcat('ref_coins/',fnames(i).name);
+    k = strfind(filename, '_');
+    j = strfind(filename,'/');
+    ref_coin_value = filename(j+1:k(end)-1); % get last index of _ with keyword end 
+    ref_coins{i} = {ref_coin_value,(imread(filename))};
+    %figure, imshow(I);
+end
+
+cnt_ref_coins = size(ref_coins);
+
+% 
+% 2. get all areas
+% 
+%IMGpattern = imcomplement(IMGpattern); %swap b&w without comment it is
+%white backgrou nd
+%figure; imshow(IMGpattern); title('test dani');
+
+PatternAttributes = regionprops(IEdgeAllCoins,'centroid', 'area', 'BoundingBox');
+cntPatternAttributes = size(PatternAttributes);
+
+% 
+% 3. Crop found coins/areas
+% 
+for i = 1 : cntPatternAttributes
+    bboxArea = PatternAttributes(i).BoundingBox;  
+	subImage = imcrop(XPattern, bboxArea);
+    diameter = sqrt(PatternAttributes(i).Area / pi) *2 ;
+    img_coins{i} = {diameter, subImage};
+    %figure; imshow(subImage);
+end
+
+% 
+% 4. now match the ref_coins with the img_coins
+% 
+
+cnt_img_coins = size(img_coins);
+for i = 1 : cnt_img_coins
+    
+    % now: 
+    % a) calculate diameter from img_coin
+    diameter = img_coins{1}(1);
+    % b) loop trough ref_coins
+    for j = 1 : cnt_ref_coins
+        
+        % c) stretch/adjust ref_coin(j) image to this diameter
+        im = ref_coins{j}(2);
+        diameter_ref_coin = im{1}
+        
+        % d) make loop for 360 degrees
+        % e) rotate adjusted ref_coin(j) for this degree
+        % f) convert this rotated ref_coin(j) to double
+        % g) convert the img_coin(i) to double
+        % h) match
+        
+       
+        clear im;
+    end 
+    
+    clear diameter;
+    
+   
+    
+end
+
+
+toc
+disp(money)
